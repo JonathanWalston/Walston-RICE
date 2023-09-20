@@ -136,7 +136,6 @@ def collect_data():
             else:
                 best_match_score = process.extractOne(company_name, df_master['Subsidiaries'])
                 if best_match_score:
-                    print("Debug: ", best_match_score)  # Debugging line
 
                     if len(best_match_score) >= 2:
                         best_match, score = best_match_score[:2]
