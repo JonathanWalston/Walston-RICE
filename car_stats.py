@@ -20,6 +20,7 @@ def calculate_stats():
         std = window_data.std()
         min_value = window_data.min()
         max_value = window_data.max()
+        sample_size = len(window_data)
 
         # Perform the Wilcoxon signed-rank test
         if len(window_data) > 0:  # and symmetry_value < 0.01:
@@ -41,7 +42,7 @@ def calculate_stats():
             mannwhitneyu_pz = None
 
         return [windowz, mean, median, std, min_value, max_value, wilcoxon_pz, binomial_pz, mannwhitneyu_pz,
-                'VariableX', categoryz, category_valuez]
+                sample_size, 'VariableX', categoryz, category_valuez]
 
     # Function to perform Mann-Whitney U test to compare CAR between two windows
     def calculate_mannwhitneyu_between_windows(df, window1, window2, categoryz=None, category_valuez=None):
@@ -135,8 +136,8 @@ def calculate_stats():
 
     # Create DataFrame and save to CSV
     results_df = pd.DataFrame(results, columns=['Window', 'Mean', 'Median', 'Std Dev', 'Min', 'Max', 'Wilcoxon P-value',
-                                                'Binomial P-value', 'Mann-Whitney U P-value', 'VariableX',
-                                                'Category', 'Category Value'])
+                                                'Binomial P-value', 'Mann-Whitney U P-value', 'Sample Size',
+                                                'VariableX', 'Category', 'Category Value'])
 
     # Convert 'Symmetry Value' to Excel formula
     results_df['Symmetry Value'] = results_df.apply(lambda row: f'=ABS(B{row.name+2}-C{row.name+2})', axis=1)
