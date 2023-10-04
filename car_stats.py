@@ -1,14 +1,20 @@
 import numpy as np
 import pandas as pd
 from scipy.stats import wilcoxon, binom_test, mannwhitneyu
-from statsmodels.stats.multitest import fdrcorrection
+from statsmodels.stats.power import TTestIndPower
 from itertools import combinations
+
+
+# Additional function to calculate power
+def calculate_power(n, alpha, effect_size):
+    analysis = TTestIndPower()
+    return analysis.solve_power(effect_size=effect_size, nobs1=n, alpha=alpha, ratio=1.0, alternative='two-sided')
 
 
 def calculate_stats():
 
     # Function to compute various statistical tests on CAR for a given windowz and categoryz
-    def calculate_tests(df, windowz, categoryz=None, category_valuez=None):
+    def calculate_tests(df, windowz, categoryz=None, category_valuez=None, alphaz=None, effect_sizez=None):
         # Filter data based on categoryz and value if provided
         if categoryz and category_valuez:
             df = df[df[categoryz] == category_valuez]
@@ -29,8 +35,20 @@ def calculate_stats():
         else:
             wilcoxon_pz = None
 
+        # Inside your calculate_tests function, after each test:
+        if wilcoxon_pz is not None:
+            wilcoxon_power = calculate_power(sample_size, alphaz, effect_sizez)
+        else:
+            wilcoxon_power = None
+
         # Conduct the Binomial test
         binomial_pz = binom_test((window_data > 0).sum(), len(window_data)) if len(window_data) > 0 else None
+
+        # Same for binomial test
+        if binomial_pz is not None:
+            binomial_power = calculate_power(sample_size, alphaz, effect_sizez)
+        else:
+            binomial_power = None
 
         # Execute the Mann-Whitney U test
         positive_data = window_data[window_data > 0]
@@ -41,8 +59,15 @@ def calculate_stats():
         else:
             mannwhitneyu_pz = None
 
-        return [windowz, mean, median, std, min_value, max_value, wilcoxon_pz, binomial_pz, mannwhitneyu_pz,
-                sample_size, 'VariableX', categoryz, category_valuez]
+        # And for Mann-Whitney U test
+        if mannwhitneyu_pz is not None:
+            mannwhitneyu_power = calculate_power(sample_size, alphaz, effect_sizez)
+        else:
+            mannwhitneyu_power = None
+
+        return [windowz, mean, median, std, min_value, max_value, wilcoxon_pz, wilcoxon_power, binomial_pz,
+                binomial_power, mannwhitneyu_pz, mannwhitneyu_power, sample_size, 'VariableX', categoryz,
+                category_valuez, alphaz, effect_sizez]
 
     # Function to perform Mann-Whitney U test to compare CAR between two windows
     def calculate_mannwhitneyu_between_windows(df, window1, window2, categoryz=None, category_valuez=None):
@@ -74,16 +99,23 @@ def calculate_stats():
     # List of categories to consider in the analysis
     categories = ['Classification', 'Posted Citations', 'Project Area', 'Product Type']
 
+    # Define different alphas and effect sizes for sensitivity analysis
+    alphas = [0.01, 0.05, 0.10]
+    effect_sizes = [0.2, 0.5, 0.8]
+
     # Initialize a list to store the results
     results = []
 
     # Compute statistical tests for each windowz and categoryz
     for window in windows:
-        results.append(calculate_tests(car_results_df, window))  # Updated to use car_results_df
-        for category in categories:
-            for category_value in car_results_df[category].unique():  # Updated to use car_results_df
-                results.append(calculate_tests(car_results_df, window, category, category_value))
-                # Updated to use car_results_df
+        for alpha in alphas:
+            for effect_size in effect_sizes:
+                results.append(calculate_tests(car_results_df, window, alphaz=alpha, effect_sizez=effect_size))
+                for category in categories:
+                    for category_value in car_results_df[category].unique():
+                        results.append(
+                            calculate_tests(car_results_df, window, categoryz=category, category_valuez=category_value,
+                                            alphaz=alpha, effect_sizez=effect_size))
 
     # Compute Mann-Whitney U test between each pair of windows
     pairs = list(combinations(windows, 2))
@@ -97,51 +129,18 @@ def calculate_stats():
                 pair_results.append(calculate_mannwhitneyu_between_windows(car_results_df, pair[0], pair[1], category,
                                                                            category_value))
 
-    # Extract p-values for multiple testing correction
-    p_values = []
-    for result in results:
-        wilcoxon_p = result[6]
-        binomial_p = result[7]
-        mannwhitneyu_p = result[8]
-
-        if isinstance(wilcoxon_p, (float, int)) and 0 <= wilcoxon_p <= 1:
-            p_values.append(wilcoxon_p)
-        if isinstance(binomial_p, (float, int)) and 0 <= binomial_p <= 1:
-            p_values.append(binomial_p)
-        if isinstance(mannwhitneyu_p, (float, int)) and 0 <= mannwhitneyu_p <= 1:
-            p_values.append(mannwhitneyu_p)
-
-    for result in pair_results:
-        mannwhitneyu_p = result[2]
-        if isinstance(mannwhitneyu_p, (float, int)) and 0 <= mannwhitneyu_p <= 1:
-            p_values.append(mannwhitneyu_p)
-
-    # Remove any non-numeric elements from p_values
-    p_values = [p for p in p_values if isinstance(p, (float, int))]
-
-    # Correct p-values for multiple testing using Benjamini-Hochberg procedure
-    p_values = [p for p in p_values if isinstance(p, (float, int)) and 0 <= p <= 1]
-    _, corrected_p_values = fdrcorrection(p_values)
-
-    # Create list of indices of valid p-values (only once)
-    valid_p_value_indices = [i for i, p in enumerate(p_values) if isinstance(p, (float, int)) and 0 <= p <= 1]
-
-    # Replace old p-values with corrected ones using valid_p_value_indices
-    for i, x in enumerate(results):
-        if i in valid_p_value_indices:
-            x[-3] = corrected_p_values[valid_p_value_indices.index(i)]
-    for i, x in enumerate(pair_results):
-        if (i + len(results)) in valid_p_value_indices:
-            x[-1] = corrected_p_values[valid_p_value_indices.index(i + len(results))]
-
     # Create DataFrame and save to CSV
-    results_df = pd.DataFrame(results, columns=['Window', 'Mean', 'Median', 'Std Dev', 'Min', 'Max', 'Wilcoxon P-value',
-                                                'Binomial P-value', 'Mann-Whitney U P-value', 'Sample Size',
-                                                'VariableX', 'Category', 'Category Value'])
+    results_df = pd.DataFrame(results, columns=['Window', 'Mean', 'Median', 'Std Dev', 'Min', 'Max',
+                                                'Wilcoxon P-value', 'Wilcoxon Power',
+                                                'Binomial P-value', 'Binomial Power',
+                                                'Mann-Whitney U P-value', 'Mann-Whitney U Power',
+                                                'Sample Size', 'VariableX', 'Category', 'Category Value',
+                                                'Alpha', 'Effect Size'])
 
     # Convert 'Symmetry Value' to Excel formula
     results_df['Symmetry Value'] = results_df.apply(lambda row: f'=ABS(B{row.name+2}-C{row.name+2})', axis=1)
 
+    # Update your CSV writing function to include new columns for varying alphas and effect sizes
     results_df.to_csv('car_statistical_results.csv', index=False, float_format='%.10f')
 
 
