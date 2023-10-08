@@ -67,6 +67,7 @@ The scripts are currently optimized and tested for Windows. Other platforms have
 2. Install the required libraries using pip: `pip install pandas numpy scipy statsmodels fuzzywuzzy yfinance sklearn`
 3. Open the project in your preferred Python environment.
 4. Run `main.py` to execute the data collection, CAR calculation, and statistics calculation processes in sequence.
+5. If there is an issue with running main.py, delete all files created in the directory and run data_collection, car_calculation, and car_stats in order one by one.
 
 ## Note
 
