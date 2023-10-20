@@ -50,27 +50,32 @@ def calculate_stats():
         else:
             binomial_power = None
 
-        # Execute the Mann-Whitney U test
+        # Execute the Mann-Whitney U test for positive vs. negative CARs within the window
         positive_data = window_data[window_data > 0]
         negative_data = window_data[window_data <= 0]
-        if len(positive_data) > 0 and len(negative_data) > 0:
-            mannwhitneyu_result = mannwhitneyu(positive_data, negative_data, alternative='two-sided')
-            mannwhitneyu_pz = mannwhitneyu_result.pvalue
-        else:
-            mannwhitneyu_pz = None
 
-        # And for Mann-Whitney U test
-        if mannwhitneyu_pz is not None:
-            mannwhitneyu_power = calculate_power(sample_size, alphaz, effect_sizez)
+        if len(positive_data) > 0 and len(negative_data) > 0:
+            mannwhitneyu_result_intra = mannwhitneyu(positive_data, negative_data, alternative='two-sided')
+            mannwhitneyu_pz_intra = mannwhitneyu_result_intra.pvalue
         else:
-            mannwhitneyu_power = None
+            mannwhitneyu_pz_intra = None
+
+        if mannwhitneyu_pz_intra is not None:
+            mannwhitneyu_power_intra = calculate_power(sample_size, alphaz, effect_sizez)
+        else:
+            mannwhitneyu_power_intra = None
 
         return [windowz, mean, median, std, min_value, max_value, wilcoxon_pz, wilcoxon_power, binomial_pz,
-                binomial_power, mannwhitneyu_pz, mannwhitneyu_power, sample_size, 'VariableX', categoryz,
+                binomial_power, mannwhitneyu_pz_intra, mannwhitneyu_power_intra, sample_size, 'VariableX', categoryz,
                 category_valuez, alphaz, effect_sizez]
 
     # Function to perform Mann-Whitney U test to compare CAR between two windows
     def calculate_mannwhitneyu_between_windows(df, window1, window2, categoryz=None, category_valuez=None):
+
+        # CONDITION TO AVOID COMPARING SAME WINDOWS
+        if window1 == window2:
+            return [window1, window2, None, categoryz, category_valuez]
+
         # Filter data based on categoryz and value if provided
         if categoryz and category_valuez:
             df = df[df[categoryz] == category_valuez]
@@ -129,7 +134,7 @@ def calculate_stats():
                 pair_results.append(calculate_mannwhitneyu_between_windows(car_results_df, pair[0], pair[1], category,
                                                                            category_value))
 
-    # Create DataFrame and save to CSV
+    # Create DataFrame for intra-window results
     results_df = pd.DataFrame(results, columns=['Window', 'Mean', 'Median', 'Std Dev', 'Min', 'Max',
                                                 'Wilcoxon P-value', 'Wilcoxon Power',
                                                 'Binomial P-value', 'Binomial Power',
@@ -138,11 +143,16 @@ def calculate_stats():
                                                 'Alpha', 'Effect Size'])
 
     # Convert 'Symmetry Value' to Excel formula
-    results_df['Symmetry Value'] = results_df.apply(lambda row: f'=ABS(B{row.name+2}-C{row.name+2})', axis=1)
+    results_df['Symmetry Value'] = results_df.apply(lambda row: f'=ABS(B{row.name + 2}-C{row.name + 2})', axis=1)
 
-    # Update your CSV writing function to include new columns for varying alphas and effect sizes
-    results_df.to_csv('car_statistical_results.csv', index=False, float_format='%.10f')
+    # Create DataFrame for inter-window Mann-Whitney U test results
+    pair_results_df = pd.DataFrame(pair_results,
+                                   columns=['Window1', 'Window2', 'Mann-Whitney U P-value Between Windows',
+                                            'Category', 'Category Value'])
 
+    # Save both DataFrames separately to CSV
+    results_df.to_csv('car_statistical_results_intra.csv', index=False, float_format='%.10f')
+    pair_results_df.to_csv('car_statistical_results_inter.csv', index=False, float_format='%.10f')
 
-if __name__ == '__main__':
-    calculate_stats()
+    if __name__ == '__main__':
+        calculate_stats()
